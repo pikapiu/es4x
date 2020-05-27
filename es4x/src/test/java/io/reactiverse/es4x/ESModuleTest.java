@@ -1,10 +1,12 @@
 package io.reactiverse.es4x;
 
+import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.graalvm.polyglot.Value;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -47,11 +49,16 @@ public class ESModuleTest {
   }
 
   @Test
-  @Ignore
   public void testMeta(TestContext should) {
 
     Object result = runtime.eval("import { f } from './mjs/meta'\n f();\n", "script.mjs", false);
+    should.assertTrue(result.toString().endsWith("mjs/meta.mjs"));
+  }
 
-    should.assertEquals("./mjs/meta", result.toString());
+  @Test
+  public void testURI(TestContext should) {
+
+    Value result = runtime.eval("import { VertxOptions } from 'https://unpkg.io/@vertx/core@3.9.1/options.mjs'\n new VertxOptions();\n", "script.mjs", false);
+    should.assertTrue(result.asHostObject() instanceof VertxOptions);
   }
 }

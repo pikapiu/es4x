@@ -19,24 +19,30 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.json.Json;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.LoggerFactory;
 import org.graalvm.polyglot.io.FileSystem;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.FileAttribute;
+import java.nio.file.spi.FileSystemProvider;
 import java.util.*;
 
 public final class VertxFileSystem implements FileSystem {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(ESModuleIO.class);
+
   private static final List<String> EXTENSIONS = Arrays.asList(".mjs", ".js");
   private static final Path EMPTY = Paths.get("");
+  private static final FileSystemProvider delegate = FileSystems.getDefault().provider();
 
   private final String prefix = System.getProperty("es4x.prefix", "");
   private final VertxInternal vertx;
+  private final Path tmpDir = Paths.get(System.getProperty("java.io.tmpdir"));
 
   public static String getCWD() {
     // clean up the current working dir
@@ -146,7 +152,48 @@ public final class VertxFileSystem implements FileSystem {
 
   @Override
   public Path parsePath(URI uri) {
-    throw new UnsupportedOperationException();
+    switch (uri.getScheme()) {
+      case "http":
+      case "https":
+        try {
+          // compute the target filename
+          final File target = new File(uri.getScheme() + "/" + uri.getHost() + (uri.getPort() != -1 ? "/" + uri.getPort() : "" ) + "/" + uri.getPath());
+          if (uri.getQuery() != null) {
+            LOGGER.warn("URI Query is ignored on cache");
+          }
+
+          // quick resolution
+          if (target.exists()) {
+            return target.toPath();
+          }
+
+          HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
+          conn.setInstanceFollowRedirects(true);
+          conn.setRequestProperty("User-Agent", "es4x");
+
+          if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+            throw new InvalidPathException(uri.toString(), conn.getResponseMessage());
+          }
+
+          try (InputStream inputStream = conn.getInputStream()) {
+            try (BufferedInputStream reader = new BufferedInputStream(inputStream)) {
+              target.getParentFile().mkdirs();
+              try (BufferedOutputStream writer = new BufferedOutputStream(new FileOutputStream(target))) {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = reader.read(buffer)) != -1) {
+                  writer.write(buffer, 0, bytesRead);
+                }
+                return target.toPath();
+              }
+            }
+          }
+        } catch (IOException | RuntimeException e) {
+          throw new UnsupportedOperationException(e);
+        }
+      default:
+        throw new UnsupportedOperationException("unsupported scheme: " + uri.getScheme());
+    }
   }
 
   @Override
@@ -176,12 +223,9 @@ public final class VertxFileSystem implements FileSystem {
   @Override
   public void checkAccess(Path path, Set<? extends AccessMode> modes, LinkOption... linkOptions) throws IOException {
     if (isFollowLinks(linkOptions)) {
-      path
-        .getFileSystem()
-        .provider()
-        .checkAccess(resolveRelative(path), modes.toArray(new AccessMode[0]));
+      delegate.checkAccess(resolveRelative(path), modes.toArray(new AccessMode[0]));
     } else if (modes.isEmpty()) {
-      Files.readAttributes(path, "isRegularFile", LinkOption.NOFOLLOW_LINKS);
+      delegate.readAttributes(resolveRelative(path), "isRegularFile", LinkOption.NOFOLLOW_LINKS);
     } else {
       throw new UnsupportedOperationException("CheckAccess for NIO Provider is unsupported with non empty AccessMode and NOFOLLOW_LINKS.");
     }
@@ -189,57 +233,57 @@ public final class VertxFileSystem implements FileSystem {
 
   @Override
   public void createDirectory(Path dir, FileAttribute<?>... attrs) throws IOException {
-    Files.createDirectory(resolveRelative(dir), attrs);
+    delegate.createDirectory(resolveRelative(dir), attrs);
   }
 
   @Override
   public void delete(Path path) throws IOException {
-    Files.delete(resolveRelative(path));
+    delegate.delete(resolveRelative(path));
   }
 
   @Override
   public void copy(Path source, Path target, CopyOption... options) throws IOException {
-    Files.copy(resolveRelative(source), resolveRelative(target), options);
+    delegate.copy(resolveRelative(source), resolveRelative(target), options);
   }
 
   @Override
   public void move(Path source, Path target, CopyOption... options) throws IOException {
-    Files.move(resolveRelative(source), resolveRelative(target), options);
+    delegate.move(resolveRelative(source), resolveRelative(target), options);
   }
 
   @Override
   public SeekableByteChannel newByteChannel(Path path, Set<? extends OpenOption> options, FileAttribute<?>... attrs) throws IOException {
-    return Files.newByteChannel(resolveRelative(path), options, attrs);
+    return delegate.newByteChannel(resolveRelative(path), options, attrs);
   }
 
   @Override
   public DirectoryStream<Path> newDirectoryStream(Path dir, DirectoryStream.Filter<? super Path> filter) throws IOException {
-    return Files.newDirectoryStream(resolveRelative(dir), filter);
+    return delegate.newDirectoryStream(resolveRelative(dir), filter);
   }
 
   @Override
   public void createLink(Path link, Path existing) throws IOException {
-    Files.createLink(resolveRelative(link), resolveRelative(existing));
+    delegate.createLink(resolveRelative(link), resolveRelative(existing));
   }
 
   @Override
   public void createSymbolicLink(Path link, Path target, FileAttribute<?>... attrs) throws IOException {
-    Files.createSymbolicLink(resolveRelative(link), resolveRelative(target), attrs);
+    delegate.createSymbolicLink(resolveRelative(link), resolveRelative(target), attrs);
   }
 
   @Override
   public Path readSymbolicLink(Path link) throws IOException {
-    return Files.readSymbolicLink(resolveRelative(link));
+    return delegate.readSymbolicLink(resolveRelative(link));
   }
 
   @Override
   public Map<String, Object> readAttributes(Path path, String attributes, LinkOption... options) throws IOException {
-    return Files.readAttributes(resolveRelative(path), attributes, options);
+    return delegate.readAttributes(resolveRelative(path), attributes, options);
   }
 
   @Override
   public void setAttribute(Path path, String attribute, Object value, LinkOption... options) throws IOException {
-    Files.setAttribute(resolveRelative(path), attribute, value, options);
+    delegate.setAttribute(resolveRelative(path), attribute, value, options);
   }
 
   @Override
@@ -262,6 +306,11 @@ public final class VertxFileSystem implements FileSystem {
   @Override
   public void setCurrentWorkingDirectory(Path currentWorkingDirectory) {
     throw new IllegalStateException("Changing Vert.x Current Working Directory is not allowed after startup.");
+  }
+
+  @Override
+  public Path getTempDirectory() {
+    return tmpDir;
   }
 
   @Override

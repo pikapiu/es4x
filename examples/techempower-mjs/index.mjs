@@ -1,7 +1,7 @@
 /// <reference types="es4x" />
 // @ts-check
 
-import {Router} from '@vertx/web';
+import {Router} from 'https://unpkg.io/@vertx/web@3.9.1/module.mjs';
 
 import {PgClient, Tuple} from '@reactiverse/reactive-pg-client';
 import {PgPoolOptions} from '@reactiverse/reactive-pg-client/options';

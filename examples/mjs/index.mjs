@@ -1,5 +1,8 @@
+/// <reference types="es4x" />
+// @ts-check
+
 import { Router } from '@vertx/web';
-import { home } from './routes.mjs';
+import { home } from './routes';
 
 const app = Router.router(vertx);
 
