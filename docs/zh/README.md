@@ -24,26 +24,16 @@ footer: MIT Licensed | Copyright © 2018-present Paulo Lopes
 ### 就像1，2，3一样简单
 
 ``` bash
-# 安装
-yarn global add es4x-pm # 或 npm install -g es4x-pm
+# (1) create
+npm init @es4x project
 
-# 建立项目文件
-es4x init
+# (2) install dependencies
+npm install # OR yarn
 
-# 创建hello world代码
-cat << EOF
-vertx.createHttpServer()
-  .requestHandler(req => req.response().end('Hello ES4X world!'))
-  .listen(8080);
-EOF > index.js
-
-# 安装依赖 （npm 及 maven）
-yarn # 或 npm install
-
-# 跑起来  
-yarn start # 或 npm start
+# (3) run
+npm start # OR yarn start
 ```
 
-::: warning 兼容性醒目   
-ES4X 需要 [GraalVM](https://www.graalvm.org) 或者 Java >= 8.   
+::: 兼容性说明
+ES4X 需要 [GraalVM](https://www.graalvm.org) 或者 Java >= 8. 如果不确定你的系统上已经安装的是哪个版本，可以考虑使用 [jabba](https://github.com/shyiko/jabba)
 :::
